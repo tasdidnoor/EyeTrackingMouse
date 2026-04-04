@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eye Control - Browser Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: #FBFBFD;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #1D1D1F;
+            overflow: hidden;
+        }
+        .container {
+            text-align: center;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 90vh;
+            justify-content: center;
+        }
+        h1 { font-size: 2.5rem; margin-bottom: 0.2rem; font-weight: 700; }
+        p { color: #86868B; font-size: 1.1rem; margin-bottom: 1.5rem; }
+        
+        #video-container {
+            position: relative;
+            width: 400px;
+            height: 300px;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        canvas { position: absolute; top: 0; left: 0; pointer-events: none; transform: scaleX(-1); }
+
+        .btn {
+            background-color: #0071E3;
+            color: white;
+            border: none;
+            padding: 12px 36px;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover { background-color: #0077ED; transform: scale(1.02); }
+        .btn:active { transform: scale(0.98); }
+
+        #cursor-dot {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: #0071E3;
+            border: 3px solid white;
+            border-radius: 50%;
+            pointer-events: none;
+            transition: transform 0.1s ease-out;
+            z-index: 1000;
+            display: none;
+        }
+        .status { margin-top: 0.5rem; font-size: 0.8rem; color: #86868B; }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: #86868B;
+        }
+        .footer a { color: #0071E3; text-decoration: none; }
+
+        .instructions {
+            margin-top: 20px;
+            text-align: left;
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .instructions h3 { margin-top: 0; font-size: 1rem; }
+        .instructions ul { padding-left: 20px; color: #424245; line-height: 1.4; margin-bottom: 0; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+    <div id="cursor-dot"></div>
+
+    <div class="container">
+        <h1>Eye Control</h1>
+        <p>A work-in-progress accessibility tool.</p>
+        
+        <div id="video-container">
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="output_canvas"></canvas>
+        </div>
+
+        <div style="margin-top: 15px; display: flex; gap: 15px; justify-content: center; align-items: center; width: 100%;">
+            <div id="click-test" style="width: 120px; height: 45px; background: #F4F4F7; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem;">
+                TEST CLICK
+            </div>
+            <button id="enable-btn" class="btn">Enable Camera</button>
+        </div>
+
+        <div class="instructions">
+            <h3>Quick Start</h3>
+            <ul>
+                <li><strong>Look:</strong> Move the blue dot with your eyes and head.</li>
+                <li><strong>Blink:</strong> Blink twice rapidly to trigger the green "CLICK" flash.</li>
+                <li><strong>Setup:</strong> Ensure your face is centered and well-lit.</li>
+            </ul>
+        </div>
+        
+        <div class="status" id="status">Status: Camera Access Required</div>
+
+        <div class="footer">
+            &copy; 2026 Tasdid Noor | Support: <a href="mailto:contact@tasdidnoor.com">contact@tasdidnoor.com</a>
+        </div>
+    </div>
+
+    <!-- MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs" type="module"></script>
+    <script type="module">
+        import { FaceLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
+
+        const video = document.getElementById("webcam");
+        const canvasElement = document.getElementById("output_canvas");
+        const canvasCtx = canvasElement.getContext("2d");
+        const enableWebcamButton = document.getElementById("enable-btn");
+        const statusText = document.getElementById("status");
+        const cursorDot = document.getElementById("cursor-dot");
+
+        let faceLandmarker;
+        let runningMode = "VIDEO";
+        let lastVideoTime = -1;
+        
+        // Blink detection states
+        let lastBlinkTime = 0;
+        const BLINK_THRESHOLD = 0.45; // Blendshape score
+        const DOUBLE_BLINK_INTERVAL = 500; // ms
+        const clickTest = document.getElementById("click-test");
+
+        // Initialize the FaceLandmarker
+        async function setup() {
+            const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                baseOptions: {
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
+                    delegate: "GPU"
+                },
+                outputFaceBlendshapes: true,
+                runningMode,
+                numFaces: 1
+            });
+            statusText.innerText = "Status: Model Loaded";
+        }
+        setup();
+
+        enableWebcamButton.onclick = function() {
+            navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+                video.srcObject = stream;
+                video.addEventListener("loadeddata", predictWebcam);
+                enableWebcamButton.style.display = "none";
+                statusText.innerText = "Status: Tracking Active";
+                cursorDot.style.display = "block";
+            });
+        };
+
+        function flashClick() {
+            clickTest.style.background = "#34C759";
+            clickTest.innerText = "CLICKED!";
+            setTimeout(() => {
+                clickTest.style.background = "#F4F4F7";
+                clickTest.innerText = "TEST CLICK";
+            }, 500);
+        }
+
+        async function predictWebcam() {
+            canvasElement.style.width = video.videoWidth + "px";
+            canvasElement.style.height = video.videoHeight + "px";
+            canvasElement.width = video.videoWidth;
+            canvasElement.height = video.videoHeight;
+
+            let startTimeMs = performance.now();
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                const results = faceLandmarker.detectForVideo(video, startTimeMs);
+                
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                
+                if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+                    const landmarks = results.faceLandmarks[0];
+                    const blendshapes = results.faceBlendshapes[0].categories;
+                    
+                    // Blink Detection using eyeBlinkLeft/Right blendshapes
+                    const leftBlink = blendshapes.find(c => c.categoryName === "eyeBlinkLeft").score;
+                    const rightBlink = blendshapes.find(c => c.categoryName === "eyeBlinkRight").score;
+                    const avgBlink = (leftBlink + rightBlink) / 2;
+
+                    if (avgBlink > BLINK_THRESHOLD) {
+                        const currentTime = Date.now();
+                        if (currentTime - lastBlinkTime < DOUBLE_BLINK_INTERVAL && currentTime - lastBlinkTime > 100) {
+                            flashClick();
+                            lastBlinkTime = 0;
+                        } else {
+                            lastBlinkTime = currentTime;
+                        }
+                    }
+
+                    // Iris landmarks indices are 468-472 for left, 473-477 for right
+                    const leftIris = landmarks[468];
+                    const rightIris = landmarks[473];
+
+                    // Draw only iris dots for visual feedback
+                    canvasCtx.fillStyle = "#0071E3";
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(leftIris.x * canvasElement.width, leftIris.y * canvasElement.height, 4, 0, 2 * Math.PI);
+                    canvasCtx.fill();
+                    
+                    // Basic "Cursor" Mapping logic for demo
+                    // Map x (0.4-0.6) to screen width
+                    const screenX = (1 - ((leftIris.x - 0.4) / 0.2)) * window.innerWidth;
+                    const screenY = ((leftIris.y - 0.4) / 0.2) * window.innerHeight;
+
+                    cursorDot.style.left = screenX + "px";
+                    cursorDot.style.top = screenY + "px";
+                }
+            }
+            window.requestAnimationFrame(predictWebcam);
+        }
+    </script>
+</body>
+</html>
