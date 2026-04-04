@@ -4,11 +4,11 @@ Eye Control is a software-based accessibility tool that allows users to control 
 
 ## Interface
 
-### Desktop Application
-![Desktop Interface](https://raw.githubusercontent.com/tasdidnoor/Assets/main/EyeTrackerMouse/PythonUI.png)
-
 ### Web Demonstration
 ![Web Interface](https://raw.githubusercontent.com/tasdidnoor/Assets/main/EyeTrackerMouse/WebDashBoard.png)
+
+### Desktop Application
+![Desktop Interface](https://raw.githubusercontent.com/tasdidnoor/Assets/main/EyeTrackerMouse/PythonUI.png)
 
 ## Installation and Setup
 
