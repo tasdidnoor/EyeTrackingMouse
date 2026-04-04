@@ -2,6 +2,14 @@
 
 Eye Control is a software-based accessibility tool that allows users to control their system's mouse cursor using eye and head movements. It utilizes advanced computer vision to track iris positioning and facial orientation in real-time.
 
+## Interface
+
+### Desktop Application
+![Desktop Interface](https://raw.githubusercontent.com/tasdidnoor/Assets/main/EyeTrackerMouse/PythonUI.png)
+
+### Web Demonstration
+![Web Interface](https://raw.githubusercontent.com/tasdidnoor/Assets/main/EyeTrackerMouse/WebDashBoard.png)
+
 ## Installation and Setup
 
 Follow these steps to set up and run Eye Control on your machine.
